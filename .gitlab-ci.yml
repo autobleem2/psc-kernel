@@ -12,7 +12,19 @@ variables:
     - make oldconfig
     - make prepare
     - make
-    
+    - "# Build package"
+    - mkdir build_output
+    - cp -r arch/arm/boot/compressed/piggy.lz4 uboot-support/
+    - cd uboot-support
+    - mkimage -f kernel.its bootimg.img
+    - cp -r bootimg.img ../build_output/
+    - cd ..
+    - "# Add compiled kernel  modules"
+    - mkdir -p build_output/modules
+    - find . -name '*.ko' -exec cp --parents \{\} build_output/modules/ \;
+    - rm -rf build_output/modules/build_output
+    - "# Compress the image as recovery"
+
   artifacts:
     paths:
       - build_output/
