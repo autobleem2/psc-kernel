@@ -1,0 +1,26 @@
+variables:
+  GIT_SUBMODULE_STRATEGY: normal
+
+.build:
+  stage: build
+  tags:
+    - docker
+  image: "docker.io/screemer/psc-toolchain5:latest"
+  script:
+    - "# Build kernel"
+    - make defconfig KBUILD_DEFCONFIG="${KBUILD_DEFCONFIG}"
+    - make oldconfig
+    - make prepare
+    - make
+    
+  artifacts:
+    paths:
+      - build_output/
+
+arm_debug:
+  extends: .build
+  variables:
+    ARCH: arm
+    KBUILD_DEFCONFIG: autobleem_defconfig
+    CROSS_COMPILE: arm-unknown-linux-gnueabihf-
+
