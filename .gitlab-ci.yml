@@ -5,7 +5,7 @@ variables:
   stage: build
   tags:
     - docker
-  image: "hub.docker.com/screemer/psc-toolchain5:latest"
+  image: "docker.io/screemer/psc-toolchain5:latest"
   script:
     - "# Build kernel"
     - make defconfig KBUILD_DEFCONFIG="${KBUILD_DEFCONFIG}"
