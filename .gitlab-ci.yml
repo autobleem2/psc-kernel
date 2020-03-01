@@ -15,7 +15,6 @@ variables:
     - "# Build package"
     - rm -rf build_output
     - mkdir build_output
-    - rm uboot-support/piggy.lz4
     - cp -r arch/arm/boot/compressed/piggy.lz4 uboot-support/
     - cd uboot-support
     - mkimage -f kernel.its bootimg.img
