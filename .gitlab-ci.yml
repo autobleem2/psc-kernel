@@ -1,0 +1,37 @@
+variables:
+  GIT_SUBMODULE_STRATEGY: normal
+
+.build:
+  stage: build
+  tags:
+    - docker
+  image: "docker.io/screemer/psc-toolchain5:latest"
+  script:
+    - "# Build kernel"
+    - make defconfig KBUILD_DEFCONFIG="${KBUILD_DEFCONFIG}"
+    - make oldconfig
+    - make prepare
+    - make
+    - "# Build package"
+    - rm -rf build_output
+    - mkdir build_output
+    - cp -r arch/arm/boot/compressed/piggy.lz4 uboot-support/
+    - cd uboot-support
+    - mkimage -f kernel.its bootimg.img
+    - cp -r bootimg.img ../build_output/
+    - cd ..
+    - "# Add compiled kernel  modules"
+    - mkdir -p build_output/modules
+    - find . -name '*.ko' -exec cp --parents \{\} build_output/modules/ \;
+    - rm -rf build_output/modules/build_output
+  artifacts:
+    paths:
+      - build_output/
+
+arm_debug:
+  extends: .build
+  variables:
+    ARCH: arm
+    KBUILD_DEFCONFIG: autobleem_defconfig
+    CROSS_COMPILE: arm-unknown-linux-gnueabihf-
+

@@ -44,12 +44,12 @@
 #ifdef CONFIG_USB_MTK_OTG
 
 #ifdef CONFIG_OF
-static unsigned int iddig_pin;
-static unsigned int iddig_pin_mode;
+static unsigned int iddig_pin=0;
+static unsigned int iddig_pin_mode=0;
 static unsigned int iddig_if_config = 1;
 #if !defined(OTG_BOOST_BY_SWITCH_CHARGER)
-static unsigned int drvvbus_pin;
-static unsigned int drvvbus_pin_mode;
+static unsigned int drvvbus_pin=0;
+static unsigned int drvvbus_pin_mode=0;
 static unsigned int drvvbus_if_config = 1;
 #endif
 #ifdef CONFIG_USB_VBUSDET_IN_GPIO
@@ -552,6 +552,7 @@ out:
 #endif
 
 /*static void mt_usb_ext_iddig_int(void)*/
+#if 0
 static irqreturn_t mt_usb_ext_iddig_int(int irq, void *dev_id)
 {
 #ifndef CONFIG_MTK_MUSB_SW_WITCH_MODE
@@ -567,6 +568,7 @@ static irqreturn_t mt_usb_ext_iddig_int(int irq, void *dev_id)
 	DBG(0, "id pin interrupt assert\n");
 	return IRQ_HANDLED;
 }
+#endif
 #ifdef CONFIG_USB_VBUSDET_IN_GPIO
 #ifdef CONFIG_USB_PHYCHK_EXTCONN
 int usb_extconntype;
@@ -661,6 +663,7 @@ static void otg_int_init(void)
 	mt_eint_set_hw_debounce(IDDIG_EINT_PIN, 64);
 	mt_eint_registration(IDDIG_EINT_PIN, EINTF_TRIGGER_LOW, mt_usb_ext_iddig_int, FALSE);
 #else
+#if 0
 	int ret = 0;
 
 	DBG(0, "****%s:%d before Init IDDIG KS!!!!!\n", __func__, __LINE__);
@@ -673,11 +676,13 @@ static void otg_int_init(void)
 
 	pinctrl_select_state(pinctrl, pinctrl_iddig);
 	DBG(0, "usb iddig_pin %d\n", iddig_pin);
+#endif
 
 #if 0
 	gpio_set_debounce(iddig_pin, 64000);
 	DBG(0, "will call __gpio_to_irq\n");
 #endif
+#if 0
 	usb_iddig_number = gpio_to_irq(iddig_pin);
 	DBG(0, "usb usb_iddig_number %d\n", usb_iddig_number);
 
@@ -688,6 +693,7 @@ static void otg_int_init(void)
 		DBG(0, "USB IDDIG IRQ LINE available!!\n");
 
 	irq_set_irq_wake(usb_iddig_number, 1);
+#endif
 #ifdef CONFIG_USB_VBUSDET_IN_GPIO
 	pinctrl_vbus_detect = pinctrl_lookup_state(pinctrl, "vbus_detect_irq_init");
 	if (IS_ERR(pinctrl_vbus_detect)) {
@@ -739,20 +745,31 @@ void mt_usb_otg_init(struct musb *musb)
 	if (node == NULL) {
 		DBG(0, "USB OTG - get node failed\n");
 	} else {
+/*
 		iddig_pin = of_get_named_gpio(node, "iddig_gpio", 0);
 		if (iddig_pin == 0) {
 			iddig_if_config = 0;
 			DBG(0, "iddig_gpio fail\n");
 		}
 		iddig_pin_mode = of_get_named_gpio(node, "iddig_gpio", 1);
-
+*/
+iddig_pin_mode =0;
+iddig_if_config=0;
+		DBG(0, "Skip iddig read");
+	
 #if !defined(OTG_BOOST_BY_SWITCH_CHARGER)
+/*
 		drvvbus_pin = of_get_named_gpio(node, "drvvbus_gpio", 0);
 		if (drvvbus_pin == 0) {
 			drvvbus_if_config = 0;
 			DBG(0, "drvvbus_gpio fail\n");
 		}
 		drvvbus_pin_mode = of_get_named_gpio(node, "drvvbus_gpio", 1);
+*/
+drvvbus_if_config=0;
+		DBG(0, "Skip drvvbus_gpio\n");
+
+
 #endif
 	pr_err("====> iddig_gpio virtual Number: %u !!!\n", iddig_pin);
 
@@ -778,7 +795,7 @@ void mt_usb_otg_init(struct musb *musb)
 #endif
 
 	/*init drrvbus*/
-	mt_usb_init_drvvbus();
+//	mt_usb_init_drvvbus();
 
 	/* init idpin interrupt */
 	INIT_DELAYED_WORK(&musb->id_pin_work, musb_id_pin_work);
