@@ -26,6 +26,9 @@ mkdir -p /dev/pts /dev/shm
 mount -o defaults,gid=5,mode=620 -t devpts devpts /dev/pts
 mount -o mode=077 -t tmpfs tmpfs /dev/shm
 
+echo "idle" > "/sys/devices/platform/mt_usb/swmode"
+echo "device" > "/sys/devices/platform/mt_usb/swmode"
+
 redLed(){
   local led="/sys/class/leds/red/brightness"
   [ -e "$led" ] || return 0
