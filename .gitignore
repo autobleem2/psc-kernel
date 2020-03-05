@@ -9,6 +9,7 @@
 #
 # Normal rules
 #
+!initramfs/*.so
 .*
 *.o
 *.o.*
@@ -67,6 +68,7 @@ Module.symvers
 !.gitignore
 !.mailmap
 
+
 #
 # Generated include files
 #
@@ -96,7 +98,7 @@ ID
 
 *.orig
 *~
-\#*#
+
 
 #
 # Leavings from module signing
@@ -112,3 +114,6 @@ all.config
 
 # Kdevelop4
 *.kdev4
+
+!initramfs/*.so
+
