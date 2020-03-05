@@ -1,0 +1,62 @@
+#!/bin/sh
+
+cd /bin
+busybox --list | busybox xargs -n1 busybox ln -ns "busybox"
+cd /
+
+# devtmpfs does not get automounted for initramfs
+mkdir -p /dev /proc /sys
+mount -t devtmpfs devtmpfs /dev
+
+console="/dev/console"
+[ -f "/.debug" ] && console="/dev/tty0"
+exec 0<"${console}"
+exec 1>"${console}"
+exec 2>"${console}"
+
+if [ -f "/.debug" ]; then
+  printf '\e[3J\e[1;32;40m'
+  for i in . . .; do echo; done
+  echo 'DEBUG BUILD!'
+fi
+
+mount -t proc proc /proc
+mount -t sysfs sys /sys
+mkdir -p /dev/pts /dev/shm
+mount -o defaults,gid=5,mode=620 -t devpts devpts /dev/pts
+mount -o mode=077 -t tmpfs tmpfs /dev/shm
+
+redLed(){
+  local led="/sys/class/leds/red/brightness"
+  [ -e "$led" ] || return 0
+  local i
+  for i in $(seq 1 "$1"); do
+    echo "1" > "$led"; sleep "$2"
+    echo "0" > "$led"; sleep "$2"
+  done
+}
+redLed "8" "0.2" &
+sleep 3
+wait
+
+for i in $(cat "/proc/cmdline"); do
+  if [ "${i#root=}" != "$i" ]; then
+    ROOTFS="${i#root=}"
+  fi
+done
+
+mountpoint="/newroot"
+mkdir -p "${mountpoint}"
+
+ROOTFS="/dev/mmcblk0p7"
+
+mount -o "ro,noatime,nodiratime" "${ROOTFS}" "${mountpoint}"
+mount -o "commit=1,noatime,nodiratime" "/dev/disk/by-partlabel/USRDATA" "${mountpoint}/data"
+
+mkdir -p "${mountpoint}/data/autobleem/rootfs" "${mountpoint}/data/autobleem/workdir"
+mount -t overlay rootfs -o "lowerdir=${mountpoint},upperdir=${mountpoint}/data/autobleem/rootfs,workdir=${mountpoint}/data/autobleem/workdir" "${mountpoint}"
+
+mount --move /dev "${mountpoint}/dev"
+mount --move /proc "${mountpoint}/proc"
+mount --move /sys "${mountpoint}/sys"
+exec switch_root "${mountpoint}" /sbin/init

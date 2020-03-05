@@ -4,9 +4,9 @@ export  CROSS_COMPILE=arm-unknown-linux-gnueabihf-
 
 
 # Build kernel
-make clean
-make defconfig KBUILD_DEFCONFIG="${KBUILD_DEFCONFIG}"
-make oldconfig
+#make clean
+#make defconfig KBUILD_DEFCONFIG="${KBUILD_DEFCONFIG}"
+#make oldconfig
 make menuconfig
 make prepare
 

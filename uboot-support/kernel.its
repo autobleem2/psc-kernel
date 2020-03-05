@@ -11,12 +11,12 @@
 	images {
 		kernel@1 {
 			description = "Linux kernel";
-			data = /incbin/("./piggy.lz4");
+			data = /incbin/("./zImage");
 			type = "kernel";
 			arch = "arm";
 			os = "linux";
-			compression = "lz4";
-			/*compression = "none";*/
+			/*compression = "lz4";*/
+			compression = "none";
 			load = <0x40008000>;
 			entry = <0x40008000>;
 			hash@1 {
