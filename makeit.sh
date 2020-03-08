@@ -4,13 +4,15 @@ export  CROSS_COMPILE=arm-unknown-linux-gnueabihf-
 
 
 # Build kernel
-make clean
+#make clean
 make defconfig KBUILD_DEFCONFIG="${KBUILD_DEFCONFIG}"
 make oldconfig
 make menuconfig
 make prepare
 
 make
+make modules_install
+make firmware_install
 #    - "# Package with U-Boot"
 #    - cd "arch/${ARCH}/boot"
 #    - lz4 -c1 Image Image.lz4
