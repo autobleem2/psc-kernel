@@ -18,7 +18,14 @@ variables:
     - rm -rf build_output
     - mkdir build_output
     - cd uboot-support
-    - /bin/bash ./packit.sh
+    - rm -rf Image
+    - rm -rf Image.lz4
+    - rm -rf boot.img
+    - cp ../arch/arm/boot/Image ./
+    - lz4 -lf9 Image
+    - echo Size Append should be here
+    - printf "%.8x" "$(stat -c "%s" "Image")" | sed 's/\(..\)\(..\)\(..\)\(..\)/\4\3\2\1/g' | xxd -r -p >> Image.lz4
+    - mkimage -f kernel.its boot.img
     - cp -r boot.img ../build_output/
     - cd ..
     - "# Add compiled kernel  modules"
@@ -27,6 +34,7 @@ variables:
     - find . -name '*.ko' -exec cp --parents \{\} /lib/modules \;
     - rm -rf build_output/modules/build_output
     - cp -R /lib/firmware/* build_output/firmware
+    - cp -R /lib/modules/* build_output/modules
     - cd build_output
     - md5sum boot.img > boot.md5
   artifacts:
