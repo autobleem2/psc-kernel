@@ -12,20 +12,31 @@ variables:
     - make oldconfig
     - make prepare
     - make
+    - make INSTALL_MOD_STRIP=1  modules_install
+    - make firmware_install
     - "# Build package"
     - rm -rf build_output
     - mkdir build_output
-    - cp -r arch/arm/boot/compressed/piggy.lz4 uboot-support/
     - cd uboot-support
+    - rm -rf Image
+    - rm -rf Image.lz4
+    - rm -rf boot.img
+    - cp ../arch/arm/boot/Image ./
+    - lz4 -lf9 Image Image.lz4
+    - echo Size Append should be here
+    - printf "%.8x" "$(stat -c "%s" "Image")" | sed 's/\(..\)\(..\)\(..\)\(..\)/\4\3\2\1/g' | xxd -r -p >> Image.lz4
     - mkimage -f kernel.its boot.img
     - cp -r boot.img ../build_output/
     - cd ..
     - "# Add compiled kernel  modules"
     - mkdir -p build_output/modules
-    - find . -name '*.ko' -exec cp --parents \{\} build_output/modules/ \;
+    - mkdir -p build_output/firmware
     - rm -rf build_output/modules/build_output
+    - cp -R /lib/firmware/* build_output/firmware
+    - cp -R /lib/modules/* build_output/modules
     - cd build_output
     - md5sum boot.img > boot.md5
+    - tar cvzf kernel_all.tgz *
   artifacts:
     paths:
       - build_output/
