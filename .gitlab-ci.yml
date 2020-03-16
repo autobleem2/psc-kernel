@@ -31,12 +31,12 @@ variables:
     - "# Add compiled kernel  modules"
     - mkdir -p build_output/modules
     - mkdir -p build_output/firmware
-    - find . -name '*.ko' -exec cp --parents \{\} /lib/modules \;
     - rm -rf build_output/modules/build_output
     - cp -R /lib/firmware/* build_output/firmware
     - cp -R /lib/modules/* build_output/modules
     - cd build_output
     - md5sum boot.img > boot.md5
+    - tar cvzf kernel_all.tgz *
   artifacts:
     paths:
       - build_output/
