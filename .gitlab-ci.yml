@@ -22,7 +22,7 @@ variables:
     - rm -rf Image.lz4
     - rm -rf boot.img
     - cp ../arch/arm/boot/Image ./
-    - lz4 -lf9 Image
+    - lz4 -lf9 Image Image.lz4
     - echo Size Append should be here
     - printf "%.8x" "$(stat -c "%s" "Image")" | sed 's/\(..\)\(..\)\(..\)\(..\)/\4\3\2\1/g' | xxd -r -p >> Image.lz4
     - mkimage -f kernel.its boot.img
