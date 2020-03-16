@@ -9,9 +9,8 @@ make defconfig KBUILD_DEFCONFIG="${KBUILD_DEFCONFIG}"
 make oldconfig
 make menuconfig
 make prepare
-
 make
-make modules_install
+make INSTALL_MOD_STRIP=1  modules_install
 make firmware_install
 #    - "# Package with U-Boot"
 #    - cd "arch/${ARCH}/boot"
