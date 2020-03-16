@@ -12,18 +12,21 @@ variables:
     - make oldconfig
     - make prepare
     - make
+    - make INSTALL_MOD_STRIP=1  modules_install
+    - make firmware_install
     - "# Build package"
     - rm -rf build_output
     - mkdir build_output
-    - cp -r arch/arm/boot/compressed/piggy.lz4 uboot-support/
     - cd uboot-support
-    - mkimage -f kernel.its boot.img
+    - /bin/bash ./packit.sh
     - cp -r boot.img ../build_output/
     - cd ..
     - "# Add compiled kernel  modules"
     - mkdir -p build_output/modules
-    - find . -name '*.ko' -exec cp --parents \{\} build_output/modules/ \;
+    - mkdir -p build_output/firmware
+    - find . -name '*.ko' -exec cp --parents \{\} /lib/modules \;
     - rm -rf build_output/modules/build_output
+    - cp -R /lib/firmware/* build_output/firmware
     - cd build_output
     - md5sum boot.img > boot.md5
   artifacts:
