@@ -8,6 +8,6 @@ rm -rf Image.lz4
 rm -rf Image
 cp ../arch/arm/boot/Image ./
 
-lz4 -lf9 "Image" 
+lz4 -lf9 "Image" "Image.lz4" 
 size_append "Image" >> "Image.lz4"
 mkimage -f kernel.its boot.img
