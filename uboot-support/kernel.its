@@ -11,7 +11,7 @@
 	images {
 		kernel@1 {
 			description = "Linux kernel";
-			data = /incbin/("./piggy.lz4");
+			data = /incbin/("./Image.lz4");
 			type = "kernel";
 			arch = "arm";
 			os = "linux";
@@ -50,3 +50,4 @@
 		};
 	};
 };
+

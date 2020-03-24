@@ -414,7 +414,7 @@ static int hwrng_fillfn(void *unused)
 		mutex_unlock(&reading_mutex);
 		put_rng(rng);
 		if (rc <= 0) {
-			pr_warn("hwrng: no data available\n");
+			//pr_warn("hwrng: no data available\n");
 			msleep_interruptible(10000);
 			continue;
 		}
