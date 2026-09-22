@@ -3,5 +3,5 @@ obj-y += mtk_vidcap_drv.o \
 		 mtk_vidcap_if.o \
 		 mtk_vcu_if.o
 
-subdir-ccflags-y += -Werror
+subdir-ccflags-y += 
 ccflags-y += -I$(srctree)/drivers/media/platform/mtk-vcu

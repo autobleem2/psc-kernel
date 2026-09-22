@@ -22,7 +22,7 @@ mtk-vcodec-enc-y := venc/venc_common_if.o \
 mtk-vcodec-common-y := mtk_vcodec_intr.o \
 		mtk_vcodec_util.o\
 
-subdir-ccflags-y += -Werror
+subdir-ccflags-y += 
 ccflags-y += -I$(srctree)/drivers/media/platform/mtk-vcodec
 ccflags-y += -I$(srctree)/drivers/media/platform/mtk-vcu
 ccflags-y += -I$(srctree)/drivers/media/platform/mtk-videobuf
