@@ -36,6 +36,8 @@
 #include <linux/list.h>
 #include <linux/idr.h>
 #include <linux/input/mt.h>
+#include <linux/crc32.h>
+#include <asm/unaligned.h>
 
 #include "hid-ids.h"
 
@@ -1863,10 +1865,16 @@ static void dualshock4_state_worker(struct work_struct *work)
 		buf[1] = 0xFF;
 		offset = 4;
 	} else {
+		/*
+		 * Bluetooth: the HID and CRC flags in byte 1 and a CRC32 in the last four bytes (below), as
+		 * upstream sends it since 4.10 - a DualShock 4 v2 (09cc) takes an output report without the
+		 * CRC as an error and drops the link (seen on the console 2026-09-25: it hung up ~0.3 s after
+		 * its HID channels opened, every time).
+		 */
 		memset(buf, 0, DS4_REPORT_0x11_SIZE);
 		buf[0] = 0x11;
-		buf[1] = 0x80;
-		buf[3] = 0x0F;
+		buf[1] = 0xC0; /* HID + CRC */
+		buf[3] = 0x07; /* blink + LEDs + motor */
 		offset = 6;
 	}
 
@@ -1892,9 +1900,16 @@ static void dualshock4_state_worker(struct work_struct *work)
 
 	if (sc->quirks & DUALSHOCK4_CONTROLLER_USB)
 		hid_hw_output_report(hdev, buf, DS4_REPORT_0x05_SIZE);
-	else
-		hid_hw_raw_request(hdev, 0x11, buf, DS4_REPORT_0x11_SIZE,
-				HID_OUTPUT_REPORT, HID_REQ_SET_REPORT);
+	else {
+		/* the CRC covers the HIDP header byte (0xA2: DATA | OUTPUT) and the report */
+		u8 bthdr = 0xA2;
+		u32 crc;
+
+		crc = crc32_le(0xFFFFFFFF, &bthdr, 1);
+		crc = ~crc32_le(crc, buf, DS4_REPORT_0x11_SIZE - 4);
+		put_unaligned_le32(crc, &buf[DS4_REPORT_0x11_SIZE - 4]);
+		hid_hw_output_report(hdev, buf, DS4_REPORT_0x11_SIZE);
+	}
 }
 
 static void motion_state_worker(struct work_struct *work)
