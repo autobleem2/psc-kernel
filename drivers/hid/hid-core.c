@@ -2012,6 +2012,39 @@ static const struct hid_device_id hid_have_special_driver[] = {
 	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_SONY, USB_DEVICE_ID_SONY_PS4_CONTROLLER) },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_SONY, USB_DEVICE_ID_SONY_PS4_CONTROLLER_2) },
 	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_SONY, USB_DEVICE_ID_SONY_PS4_CONTROLLER_2) },
+	/*
+	 * The backported pad drivers' devices (hid-sony, hid-playstation, hid-nintendo, hid-microsoft from 6.1).
+	 * 4.4 hands any device missing from this table to hid-generic first, so each id a special driver
+	 * claims has to be here too. Plain numbers where hid-ids.h has no name: the drivers define their own.
+	 */
+	{ HID_USB_DEVICE(USB_VENDOR_ID_SONY, 0x0ba0) },		/* Sony wireless adapter for the DS4 */
+	{ HID_USB_DEVICE(0x1345, 0x3008) },			/* Nyko Core (SINO LITE) */
+	{ HID_BLUETOOTH_DEVICE(0x0609, 0x0368) },		/* SMK NSG-MR5U remote */
+	{ HID_BLUETOOTH_DEVICE(0x0609, 0x0369) },		/* SMK NSG-MR7U remote */
+	{ HID_USB_DEVICE(0x12ba, 0x074b) },			/* Guitar Hero Live PS3/Wii U dongle */
+	{ HID_USB_DEVICE(0x12ba, 0x0100) },			/* Guitar Hero PS3 World Tour dongle */
+	{ HID_USB_DEVICE(0x1430, 0x474c) },			/* RedOctane Guitar Hero PC dongle */
+	{ HID_USB_DEVICE(0x1430, 0x07bb) },			/* Guitar Hero Live PS4 dongle */
+	{ HID_USB_DEVICE(USB_VENDOR_ID_SONY, 0x0ce6) },		/* DualSense */
+	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_SONY, 0x0ce6) },
+	{ HID_USB_DEVICE(USB_VENDOR_ID_SONY, 0x0df2) },		/* DualSense Edge */
+	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_SONY, 0x0df2) },
+	{ HID_USB_DEVICE(USB_VENDOR_ID_NINTENDO, 0x2009) },	/* Switch Pro Controller */
+	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_NINTENDO, 0x2009) },
+	{ HID_USB_DEVICE(USB_VENDOR_ID_NINTENDO, 0x200e) },	/* Joy-Con charging grip */
+	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_NINTENDO, 0x2006) },	/* Joy-Con L */
+	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_NINTENDO, 0x2007) },	/* Joy-Con R */
+	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_MICROSOFT, 0x02fd) },	/* Xbox One S pad (1708) */
+	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_MICROSOFT, 0x0b20) },	/* Xbox One S pad (1708, BLE) */
+	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_MICROSOFT, 0x0b13) },	/* Xbox Series X/S pad (1914) */
+	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_MICROSOFT, 0x0b05) },	/* Xbox Elite 2 (1797) */
+	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_MICROSOFT, 0x0b22) },	/* Xbox Elite 2 (1797, BLE) */
+	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_MICROSOFT, 0x02e0) },	/* 8BitDo SN30 Pro+ in Xbox mode */
+	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_MICROSOFT, 0x091b) },	/* Surface Dial */
+	{ HID_USB_DEVICE(USB_VENDOR_ID_MICROSOFT, 0x00b4) },	/* Digital Media 7K */
+	{ HID_USB_DEVICE(USB_VENDOR_ID_MICROSOFT, 0x0750) },	/* Digital Media 600 */
+	{ HID_USB_DEVICE(USB_VENDOR_ID_MICROSOFT, 0x0732) },	/* Digital Media 3K v1 */
+	{ HID_USB_DEVICE(USB_VENDOR_ID_MICROSOFT, 0x00e3) },	/* Comfort Keyboard */
 	{ HID_USB_DEVICE(USB_VENDOR_ID_SONY, USB_DEVICE_ID_SONY_VAIO_VGX_MOUSE) },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_SONY, USB_DEVICE_ID_SONY_VAIO_VGP_MOUSE) },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_STEELSERIES, USB_DEVICE_ID_STEELSERIES_SRWS1) },

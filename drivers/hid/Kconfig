@@ -479,6 +479,7 @@ config HID_MAGICMOUSE
 config HID_MICROSOFT
 	tristate "Microsoft non-fully HID-compliant devices"
 	depends on HID
+	select INPUT_FF_MEMLESS
 	default !EXPERT
 	---help---
 	Support for Microsoft devices that are not fully compliant with HID standard.
