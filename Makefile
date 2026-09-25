@@ -617,6 +617,12 @@ endif
 # Tell gcc to never replace conditional load with a non-conditional one
 KBUILD_CFLAGS	+= $(call cc-option,--param=allow-store-data-races=0)
 
+# A gcc built with --enable-default-pie (the console's gcc-6 is) makes position-independent code unless told
+# otherwise: GOT-relative relocations (R_ARM_GOT_BREL, R_ARM_GOTPC) that 4.4's ARM module loader cannot
+# resolve, so no module loaded. Upstream 4.4.y stable added the same two lines later.
+KBUILD_CFLAGS	+= $(call cc-option,-fno-PIE)
+KBUILD_AFLAGS	+= $(call cc-option,-fno-PIE)
+
 ifdef CONFIG_READABLE_ASM
 # Disable optimizations that make assembler listings hard to read.
 # reorder blocks reorders the control in the function
