@@ -1,5 +1,12 @@
 config RTL8723BU
-	tristate "Realtek 8723B USB WiFi"
-	depends on USB
+	tristate "Realtek RTL8723BU USB Wi-Fi (vendor driver)"
+	depends on USB && CFG80211
+	select WIRELESS_EXT
+	select WEXT_PRIV
 	---help---
-	  Help message of RTL8723BU
+	  Vendor driver for the Realtek RTL8723BU USB Wi-Fi/Bluetooth
+	  combo chip (for example the Edimax 7392:a611). It is built as
+	  the module 8723bu. Needs rtl_bt/rtl8723b_fw.bin for Bluetooth
+	  (loaded by btusb); the Wi-Fi firmware is built into the driver.
+
+	  If unsure, say N.
