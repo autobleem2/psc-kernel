@@ -44,6 +44,14 @@
 #include "musb_host.h"
 #include "musb_qmu.h"
 
+/* Host transfers go by PIO unless host_dma is set: with the musbhsdma DMA, bulk reads of a USB CD drive on this
+ * (rear, OTG) port hang and usb-storage resets the drive every few seconds - at high and at full speed alike.
+ * The gadget side keeps its DMA. Set at run time, it applies to the transfers programmed after it.
+ */
+static bool host_dma;
+module_param(host_dma, bool, 0644);
+MODULE_PARM_DESC(host_dma, "host transfers through DMA (default off: PIO)");
+
 /* MUSB HOST status 22-mar-2006
  *
  * - There's still lots of partial code duplication for fault paths, so
@@ -918,7 +926,7 @@ static void musb_ep_program(struct musb *musb, u8 epnum,
 	void __iomem *epio = hw_ep->regs;
 	struct musb_qh *qh = musb_ep_get_qh(hw_ep, !is_out);
 	u16 packet_sz = qh->maxpacket;
-	u8 use_dma = 1;
+	u8 use_dma = host_dma;
 	u16 csr;
 
 	DBG(4, "%s hw%d urb %p spd%d dev%d ep%d%s h_addr%02x h_port%02x bytes %d\n",
@@ -947,8 +955,17 @@ static void musb_ep_program(struct musb *musb, u8 epnum,
 			else
 				hw_ep->rx_channel = dma_channel;
 		}
-	} else
+	} else {
+		/* PIO: a channel left from an earlier DMA transfer would be picked up by the interrupt paths */
+		dma_channel = is_out ? hw_ep->tx_channel : hw_ep->rx_channel;
+		if (dma_channel && dma_controller)
+			dma_controller->channel_release(dma_channel);
+		if (is_out)
+			hw_ep->tx_channel = NULL;
+		else
+			hw_ep->rx_channel = NULL;
 		dma_channel = NULL;
+	}
 
 	/* make sure we clear DMAEnab, autoSet bits from previous run */
 
