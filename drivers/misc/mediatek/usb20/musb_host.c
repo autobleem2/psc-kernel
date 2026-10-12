@@ -564,9 +564,11 @@ static void musb_advance_schedule(struct musb *musb, struct urb *urb, struct mus
 	qh->is_ready = 0;
 	musb_giveback(musb, urb, status);
 
-	if ((is_in && !hw_ep->in_qh)
-			|| (!is_in && !hw_ep->out_qh)
-	   ) {
+	/* musb->lock was dropped in musb_giveback: a dequeue may have freed this qh (or the endpoint may carry
+	 * another one now), so take it again (upstream 33d7e3723215)
+	 */
+	qh = musb_ep_get_qh(hw_ep, is_in);
+	if (!qh) {
 		DBG(0, "QH already freed\n");
 		return;
 	}
@@ -803,16 +805,17 @@ static void musb_rx_reinit(struct musb *musb, struct musb_qh *qh, struct musb_hw
 			musb_writew(ep->regs, MUSB_TXCSR, MUSB_TXCSR_DMAMODE);
 		musb_writew(ep->regs, MUSB_TXCSR, 0);
 
-		/* scrub all previous state, clearing toggle */
-	} else {
-		csr = musb_readw(ep->regs, MUSB_RXCSR);
-		if (csr & MUSB_RXCSR_RXPKTRDY)
-			WARNING("[MUSB]rx%d, packet/%d ready?\n", ep->epnum,
-				musb_readw(ep->regs, MUSB_RXCOUNT));
-
-		/* musb_h_flush_rxfifo(ep, MUSB_RXCSR_CLRDATATOG); */
-		musb_h_flush_rxfifo(ep, 0);
 	}
+	/* scrub all previous rx state - a shared-fifo endpoint too, else its rx packets are dropped silently
+	 * (upstream f3eec0cf784e)
+	 */
+	csr = musb_readw(ep->regs, MUSB_RXCSR);
+	if (csr & MUSB_RXCSR_RXPKTRDY)
+		WARNING("[MUSB]rx%d, packet/%d ready?\n", ep->epnum,
+			musb_readw(ep->regs, MUSB_RXCOUNT));
+
+	/* musb_h_flush_rxfifo(ep, MUSB_RXCSR_CLRDATATOG); */
+	musb_h_flush_rxfifo(ep, 0);
 
 	/* target addr and (for multipoint) hub addr/port */
 	if (musb->is_multipoint) {
@@ -1280,9 +1283,13 @@ static void musb_bulk_nak_timeout(struct musb *musb, struct musb_hw_ep *ep, int 
 	if (is_in) {
 		dma = is_dma_capable() ? ep->rx_channel : NULL;
 
-		/* clear nak timeout bit */
+		/* stop the transaction by clearing REQPKT first, then the NAK timeout bit (programmer's guide
+		 * 9.2.2; upstream 7b2c17f82954) - else a packet can arrive and be ACKed before the reprogramming
+		 */
 		rx_csr = musb_readw(epio, MUSB_RXCSR);
 		rx_csr |= MUSB_RXCSR_H_WZC_BITS;
+		rx_csr &= ~MUSB_RXCSR_H_REQPKT;
+		musb_writew(epio, MUSB_RXCSR, rx_csr);
 		rx_csr &= ~MUSB_RXCSR_DATAERROR;
 		musb_writew(epio, MUSB_RXCSR, rx_csr);
 
@@ -1327,7 +1334,8 @@ static void musb_bulk_nak_timeout(struct musb *musb, struct musb_hw_ep *ep, int 
 			/* set tx_reinit and schedule the next qh */
 			ep->tx_reinit = 1;
 		}
-		musb_start_urb(musb, is_in, next_qh);
+		if (next_qh)	/* upstream 2b63f1329df2 */
+			musb_start_urb(musb, is_in, next_qh);
 	}
 }
 
@@ -2747,6 +2755,7 @@ static int musb_urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 			if (qh->is_use_qmu)
 				mtk_disable_q(musb, qh->hw_ep->epnum, is_in);
 #endif
+			musb_ep_set_qh(qh->hw_ep, is_in, NULL);
 			qh->hep->hcpriv = NULL;
 			list_del(&qh->ring);
 
