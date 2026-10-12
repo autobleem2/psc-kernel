@@ -54,6 +54,43 @@
 #include "musbfsh_qmu.h"
 #include "mtk11_qmu.h"
 
+/* Host transfers on the front ports go by PIO unless host_dma is set (the rear port's musb-hdrc does the same):
+ * its DMA hangs on bulk reads ending in a short packet there, and nothing shows this controller's copy is safer.
+ * Set at run time, it applies to the transfers programmed after it. QMU (isochronous) is not affected.
+ */
+static bool host_dma;
+module_param(host_dma, bool, 0644);
+MODULE_PARM_DESC(host_dma, "host transfers through DMA (default off: PIO)");
+
+/* PIO for an urb with no kernel mapping of its data: on a DMA-capable controller usb-storage hands over highmem
+ * pages of a scatterlist with transfer_buffer NULL (usb_sg_init). The bytes go through a small bounce buffer and
+ * sg_pcopy_{to,from}_buffer at the urb offset - the rear port's driver and upstream musb use sg_miter for the same.
+ */
+static void musbfsh_sg_fifo(struct musbfsh_hw_ep *hw_ep, struct urb *urb, u32 offset, u32 len, bool to_fifo)
+{
+	unsigned int nents = urb->num_sgs ? urb->num_sgs : 1;
+	u8 bounce[128];
+
+	while (len) {
+		u32 n = min_t(u32, len, sizeof(bounce));
+
+		if (to_fifo) {
+			sg_pcopy_to_buffer(urb->sg, nents, bounce, n, offset);
+			musbfsh_write_fifo(hw_ep, n, bounce);
+		} else {
+			musbfsh_read_fifo(hw_ep, n, bounce);
+			sg_pcopy_from_buffer(urb->sg, nents, bounce, n, offset);
+		}
+		offset += n;
+		len -= n;
+	}
+}
+
+static bool musbfsh_urb_unmapped(struct urb *urb, u8 epnum)
+{
+	return epnum && !urb->transfer_buffer && urb->sg;
+}
+
 /* MUSB HOST status 22-mar-2006
  *
  * - There's still lots of partial code duplication for fault paths, so
@@ -588,8 +625,11 @@ void musbfsh_advance_schedule(struct musbfsh *musbfsh, struct urb *urb,
 
 	qh->is_ready = 0;
 	musbfsh_giveback(musbfsh, urb, status);
-	if ((is_in && !hw_ep->in_qh)
-			|| (!is_in && !hw_ep->out_qh)) {
+	/* musbfsh->lock was dropped in musbfsh_giveback: a dequeue may have freed this qh (or the endpoint may carry
+	 * another one now), so take it again (upstream 33d7e3723215)
+	 */
+	qh = musbfsh_ep_get_qh(hw_ep, is_in);
+	if (!qh) {
 		WARNING("QH already freed\n");
 		return;
 	}
@@ -758,7 +798,10 @@ static bool musbfsh_host_packet_rx(struct musbfsh *musbfsh, struct urb *urb,
 			urb->status = -EREMOTEIO;
 	}
 
-	musbfsh_read_fifo(hw_ep, length, buf);
+	if (musbfsh_urb_unmapped(urb, epnum))
+		musbfsh_sg_fifo(hw_ep, urb, (u8 *)buf - (u8 *)buffer, length, false);
+	else
+		musbfsh_read_fifo(hw_ep, length, buf);
 
 	csr = musbfsh_readw(epio, MUSBFSH_RXCSR);
 	csr |= MUSBFSH_RXCSR_H_WZC_BITS;
@@ -813,16 +856,16 @@ musbfsh_rx_reinit(struct musbfsh *musbfsh, struct musbfsh_qh *qh,
 			musbfsh_writew(ep->regs, MUSBFSH_TXCSR,
 				       MUSBFSH_TXCSR_DMAMODE);
 		musbfsh_writew(ep->regs, MUSBFSH_TXCSR, 0);
-
-		/* scrub all previous state, clearing toggle */
-	} else {
-		csr = musbfsh_readw(ep->regs, MUSBFSH_RXCSR);
-		if (csr & MUSBFSH_RXCSR_RXPKTRDY)
-			INFO("musbfsh::rx%d, packet/%d ready?\n", ep->epnum,
-			     musbfsh_readw(ep->regs, MUSBFSH_RXCOUNT));
-
-		musbfsh_h_flush_rxfifo(ep, 0);
 	}
+	/* scrub all previous rx state - a shared-fifo endpoint too, else its rx packets are dropped silently
+	 * (upstream f3eec0cf784e)
+	 */
+	csr = musbfsh_readw(ep->regs, MUSBFSH_RXCSR);
+	if (csr & MUSBFSH_RXCSR_RXPKTRDY)
+		INFO("musbfsh::rx%d, packet/%d ready?\n", ep->epnum,
+		     musbfsh_readw(ep->regs, MUSBFSH_RXCOUNT));
+
+	musbfsh_h_flush_rxfifo(ep, 0);
 
 	/* target addr and (for multipoint) hub addr/port */
 	if (musbfsh->is_multipoint) {
@@ -939,7 +982,7 @@ static void musbfsh_ep_program(struct musbfsh *musbfsh, u8 epnum,
 	dma_controller = musbfsh->dma_controller;
 
 	/* will check epnum, indicate dma is not used for ep0! */
-	if (is_dma_capable() && epnum && dma_controller) {
+	if (host_dma && is_dma_capable() && epnum && dma_controller) {
 		INFO("Using DMA epnum%d\n", epnum);
 
 		/* not all eps have dma channel */
@@ -970,6 +1013,14 @@ static void musbfsh_ep_program(struct musbfsh *musbfsh, u8 epnum,
 		}
 	} else {
 		INFO("Using PIO for ep%d\n", epnum);
+		/* a channel left from an earlier DMA transfer would be picked up by the interrupt paths */
+		dma_channel = is_out ? hw_ep->tx_channel : hw_ep->rx_channel;
+		if (dma_channel && dma_controller)
+			dma_controller->channel_release(dma_channel);
+		if (is_out)
+			hw_ep->tx_channel = NULL;
+		else
+			hw_ep->rx_channel = NULL;
 		dma_channel = NULL;
 	}
 
@@ -1054,7 +1105,10 @@ static void musbfsh_ep_program(struct musbfsh *musbfsh, u8 epnum,
 		if (load_count) {	/* dma is not available */
 			/* PIO to load FIFO */
 			qh->segsize = load_count;
-			musbfsh_write_fifo(hw_ep, load_count, buf);
+			if (musbfsh_urb_unmapped(urb, epnum))
+				musbfsh_sg_fifo(hw_ep, urb, (u8 *)buf - (u8 *)urb->transfer_buffer, load_count, true);
+			else
+				musbfsh_write_fifo(hw_ep, load_count, buf);
 		}
 
 		/* re-enable interrupt */
@@ -1579,7 +1633,10 @@ void musbfsh_host_tx(struct musbfsh *musbfsh, u8 epnum)	/* real ep num */
 		length = qh->maxpacket;
 	/* Unmap the buffer so that CPU can use it */
 	usb_hcd_unmap_urb_for_dma(musbfsh_to_hcd(musbfsh), urb);
-	musbfsh_write_fifo(hw_ep, length, urb->transfer_buffer + offset);
+	if (musbfsh_urb_unmapped(urb, epnum))
+		musbfsh_sg_fifo(hw_ep, urb, offset, length, true);
+	else
+		musbfsh_write_fifo(hw_ep, length, urb->transfer_buffer + offset);
 	qh->segsize = length;
 
 	musbfsh_ep_select(mbase, epnum);
@@ -1640,9 +1697,13 @@ static void musbfsh_bulk_rx_nak_timeout(struct musbfsh *musbfsh,
 	musbfsh_ep_select(mbase, ep->epnum);
 	dma = is_dma_capable() ? ep->rx_channel : NULL;
 
-	/* clear nak timeout bit */
+	/* stop the transaction by clearing REQPKT first, then the NAK timeout bit (programmer's guide 9.2.2;
+	 * upstream 7b2c17f82954) - else a packet can arrive and be ACKed before the reprogramming
+	 */
 	rx_csr = musbfsh_readw(epio, MUSBFSH_RXCSR);
 	rx_csr |= MUSBFSH_RXCSR_H_WZC_BITS;
+	rx_csr &= ~MUSBFSH_RXCSR_H_REQPKT;
+	musbfsh_writew(epio, MUSBFSH_RXCSR, rx_csr);
 	rx_csr &= ~MUSBFSH_RXCSR_DATAERROR;
 	musbfsh_writew(epio, MUSBFSH_RXCSR, rx_csr);
 
@@ -1666,7 +1727,8 @@ static void musbfsh_bulk_rx_nak_timeout(struct musbfsh *musbfsh,
 		/* set rx_reinit and schedule the next qh */
 		ep->rx_reinit = 1;
 		/* MYDBG("musbfsh_start_urb go\n"); */
-		musbfsh_start_urb(musbfsh, 1, next_qh);
+		if (next_qh)	/* upstream 2b63f1329df2 */
+			musbfsh_start_urb(musbfsh, 1, next_qh);
 	}
 }
 
@@ -1736,6 +1798,10 @@ void musbfsh_host_rx(struct musbfsh *musbfsh, u8 epnum)
 
 		status = -EPROTO;
 		musbfsh_writeb(epio, MUSBFSH_RXINTERVAL, 0);
+
+		/* the programming guide: the driver clears RXCSR bit 2 when the controller sets it (upstream b5801212229f) */
+		rx_csr &= ~MUSBFSH_RXCSR_H_ERROR;
+		musbfsh_writew(epio, MUSBFSH_RXCSR, rx_csr);
 
 	} else if (rx_csr & MUSBFSH_RXCSR_DATAERROR) {
 		if (qh->type != USB_ENDPOINT_XFER_ISOC) {
@@ -2536,6 +2602,7 @@ static int musbfsh_urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 			if (qh->is_use_qmu)
 				mtk11_disable_q(musbfsh, qh->hw_ep->epnum, is_in);
 #endif
+			musbfsh_ep_set_qh(qh->hw_ep, is_in, NULL);
 			qh->hep->hcpriv = NULL;
 			list_del(&qh->ring);
 			if (musbfsh_host_dynamic_fifo && qh->type != USB_ENDPOINT_XFER_CONTROL)
