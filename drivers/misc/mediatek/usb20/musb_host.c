@@ -44,13 +44,31 @@
 #include "musb_host.h"
 #include "musb_qmu.h"
 
-/* Host transfers go by PIO unless host_dma is set: with the musbhsdma DMA, bulk reads of a USB CD drive on this
- * (rear, OTG) port hang and usb-storage resets the drive every few seconds - at high and at full speed alike.
- * The gadget side keeps its DMA. Set at run time, it applies to the transfers programmed after it.
+/* Host transfers go by DMA, except for the devices in pio_devs: with the musbhsdma DMA, bulk reads of a USB CD
+ * drive on this (rear, OTG) port hang and usb-storage resets the drive every few seconds - at high and at full
+ * speed alike - while sticks, WiFi and Bluetooth need the DMA path (PIO of highmem scatterlists is not safe here).
+ * A udev rule of the payload puts every CD/DVD drive (an sr device) into pio_devs by its device number on this
+ * bus. host_dma=0 sends everything by PIO. Set at run time, both apply to the transfers programmed after it.
+ * The gadget side keeps its DMA.
  */
-static bool host_dma;
+static bool host_dma = true;
 module_param(host_dma, bool, 0644);
-MODULE_PARM_DESC(host_dma, "host transfers through DMA (default off: PIO)");
+MODULE_PARM_DESC(host_dma, "host transfers through DMA (default on; pio_devs go by PIO)");
+
+static int pio_devs[8];
+static int n_pio_devs;
+module_param_array(pio_devs, int, &n_pio_devs, 0644);
+MODULE_PARM_DESC(pio_devs, "device numbers on this bus whose host transfers go by PIO (CD/DVD drives, set by udev)");
+
+static bool musb_dev_wants_pio(struct usb_device *udev)
+{
+	int i;
+
+	for (i = 0; i < n_pio_devs && i < ARRAY_SIZE(pio_devs); i++)
+		if (pio_devs[i] == udev->devnum)
+			return true;
+	return false;
+}
 
 /* MUSB HOST status 22-mar-2006
  *
@@ -929,7 +947,7 @@ static void musb_ep_program(struct musb *musb, u8 epnum,
 	void __iomem *epio = hw_ep->regs;
 	struct musb_qh *qh = musb_ep_get_qh(hw_ep, !is_out);
 	u16 packet_sz = qh->maxpacket;
-	u8 use_dma = host_dma;
+	u8 use_dma = host_dma && !musb_dev_wants_pio(urb->dev);
 	u16 csr;
 
 	DBG(4, "%s hw%d urb %p spd%d dev%d ep%d%s h_addr%02x h_port%02x bytes %d\n",
@@ -2755,7 +2773,12 @@ static int musb_urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 			if (qh->is_use_qmu)
 				mtk_disable_q(musb, qh->hw_ep->epnum, is_in);
 #endif
-			musb_ep_set_qh(qh->hw_ep, is_in, NULL);
+			/* only when the endpoint still points at this qh: this branch is taken too when the endpoint
+			 * carries another device's active qh, and clearing that one strands its transfer - a stick or a
+			 * CD drive behind a hub with WiFi then times out (-110) and usb-storage resets it forever
+			 */
+			if (musb_ep_get_qh(qh->hw_ep, is_in) == qh)
+				musb_ep_set_qh(qh->hw_ep, is_in, NULL);
 			qh->hep->hcpriv = NULL;
 			list_del(&qh->ring);
 

@@ -54,13 +54,30 @@
 #include "musbfsh_qmu.h"
 #include "mtk11_qmu.h"
 
-/* Host transfers on the front ports go by PIO unless host_dma is set (the rear port's musb-hdrc does the same):
- * its DMA hangs on bulk reads ending in a short packet there, and nothing shows this controller's copy is safer.
- * Set at run time, it applies to the transfers programmed after it. QMU (isochronous) is not affected.
+/* Host transfers on the front ports go by DMA, except for the devices in pio_devs (the rear port's musb-hdrc
+ * does the same): the DMA hangs on a CD drive's bulk reads ending in a short packet, while sticks and the rest
+ * worked by DMA. A udev rule of the payload puts every CD/DVD drive (an sr device) into pio_devs by its device
+ * number on this bus. host_dma=0 sends everything by PIO. Set at run time, both apply to the transfers programmed
+ * after it. QMU (isochronous) is not affected.
  */
-static bool host_dma;
+static bool host_dma = true;
 module_param(host_dma, bool, 0644);
-MODULE_PARM_DESC(host_dma, "host transfers through DMA (default off: PIO)");
+MODULE_PARM_DESC(host_dma, "host transfers through DMA (default on; pio_devs go by PIO)");
+
+static int pio_devs[8];
+static int n_pio_devs;
+module_param_array(pio_devs, int, &n_pio_devs, 0644);
+MODULE_PARM_DESC(pio_devs, "device numbers on this bus whose host transfers go by PIO (CD/DVD drives, set by udev)");
+
+static bool musbfsh_dev_wants_pio(struct usb_device *udev)
+{
+	int i;
+
+	for (i = 0; i < n_pio_devs && i < ARRAY_SIZE(pio_devs); i++)
+		if (pio_devs[i] == udev->devnum)
+			return true;
+	return false;
+}
 
 /* PIO for an urb with no kernel mapping of its data: on a DMA-capable controller usb-storage hands over highmem
  * pages of a scatterlist with transfer_buffer NULL (usb_sg_init). The bytes go through a small bounce buffer and
@@ -982,7 +999,7 @@ static void musbfsh_ep_program(struct musbfsh *musbfsh, u8 epnum,
 	dma_controller = musbfsh->dma_controller;
 
 	/* will check epnum, indicate dma is not used for ep0! */
-	if (host_dma && is_dma_capable() && epnum && dma_controller) {
+	if (host_dma && !musbfsh_dev_wants_pio(urb->dev) && is_dma_capable() && epnum && dma_controller) {
 		INFO("Using DMA epnum%d\n", epnum);
 
 		/* not all eps have dma channel */
@@ -2602,7 +2619,12 @@ static int musbfsh_urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 			if (qh->is_use_qmu)
 				mtk11_disable_q(musbfsh, qh->hw_ep->epnum, is_in);
 #endif
-			musbfsh_ep_set_qh(qh->hw_ep, is_in, NULL);
+			/* only when the endpoint still points at this qh: this branch is taken too when the endpoint
+			 * carries another device's active qh, and clearing that one strands its transfer (the rear
+			 * port's musb-hdrc has the same guard)
+			 */
+			if (musbfsh_ep_get_qh(qh->hw_ep, is_in) == qh)
+				musbfsh_ep_set_qh(qh->hw_ep, is_in, NULL);
 			qh->hep->hcpriv = NULL;
 			list_del(&qh->ring);
 			if (musbfsh_host_dynamic_fifo && qh->type != USB_ENDPOINT_XFER_CONTROL)
