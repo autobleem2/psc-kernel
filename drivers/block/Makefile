@@ -15,11 +15,9 @@ obj-$(CONFIG_ATARI_FLOPPY)	+= ataflop.o
 obj-$(CONFIG_AMIGA_Z2RAM)	+= z2ram.o
 obj-$(CONFIG_BLK_DEV_RAM)	+= brd.o
 
-ifeq ($(CONFIG_MEDIATEK_SOLUTION),y)
-obj-$(CONFIG_BLK_DEV_LOOP)	+= loop-mtk.o
-else
+# the standard loop driver also on MediaTek: loop-mtk.c writes through f_op->write, which vfat and tmpfs no
+# longer have in 4.4, so it made every loop device read-only (a writable ext4 image on the stick, 2026-10-14)
 obj-$(CONFIG_BLK_DEV_LOOP)	+= loop.o
-endif
 obj-$(CONFIG_BLK_CPQ_DA)	+= cpqarray.o
 obj-$(CONFIG_BLK_CPQ_CISS_DA)  += cciss.o
 obj-$(CONFIG_BLK_DEV_DAC960)	+= DAC960.o
