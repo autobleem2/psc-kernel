@@ -827,6 +827,34 @@ static void rear_port_idle(void)
 	rear_host = 0;
 }
 
+/* The front LED blinks orange (red and green together) from the start of /init: the stick boot takes longer than
+ * the stock one and a dark console looks dead after a flash. On the stick path the blink goes on until start_pman's
+ * first suspend, which turns it steady orange; the legacy and stock boots get the LED back dark, as it was. */
+static void boot_led(int blink)
+{
+	static const char *const leds[] = { "/sys/class/leds/red", "/sys/class/leds/green" };
+	char path[64];
+	size_t i;
+
+	if (TEST)
+		return;
+	for (i = 0; i < sizeof(leds) / sizeof(leds[0]); i++) {
+		snprintf(path, sizeof(path), "%s/trigger", leds[i]);
+		if (write_str(path, blink ? "timer\n" : "none\n") < 0)
+			continue;
+		if (blink) {
+			/* delay_on/delay_off exist only once the timer trigger is set */
+			snprintf(path, sizeof(path), "%s/delay_on", leds[i]);
+			write_str(path, "500\n");
+			snprintf(path, sizeof(path), "%s/delay_off", leds[i]);
+			write_str(path, "500\n");
+		} else {
+			snprintf(path, sizeof(path), "%s/brightness", leds[i]);
+			write_str(path, "0\n");
+		}
+	}
+}
+
 /* sd[a-z] or sd[a-z]<n> */
 static int sd_name(const char *n)
 {
@@ -1217,6 +1245,7 @@ int main(int argc, char **argv)
 	(void)argc;
 	init_argv = argv;
 	early_mounts();
+	boot_led(1);
 	logmsg("start");
 
 	wait_s = stick_wait_seconds();
@@ -1232,6 +1261,7 @@ int main(int argc, char **argv)
 	else if (boot_stick(wait_s) == -2)
 		goto last_resort;
 	rear_port_idle();
+	boot_led(0);
 
 	if (legacy_present() && boot_legacy() == -2)
 		goto last_resort;
@@ -1244,6 +1274,7 @@ int main(int argc, char **argv)
 	}
 
 last_resort:
+	boot_led(0);
 	init_argv[0] = (char *)"/sbin/init";
 	for (i = 0; i < 2; i++) {
 		if (!TEST)
