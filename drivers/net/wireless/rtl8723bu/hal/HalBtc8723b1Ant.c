@@ -3143,6 +3143,9 @@ EXhalbtc8723b1ant_DisplayCoexInfo(
 		pBtLinkInfo->bScoExist, pBtLinkInfo->bHidExist, pBtLinkInfo->bPanExist, pBtLinkInfo->bA2dpExist);
 	CL_PRINTF(cliBuf);
 
+	CL_SPRINTF(cliBuf, BT_TMP_BUF_SIZE, "\r\n %-35s = %d", "Host HID hint", GLBtHostHidHint);
+	CL_PRINTF(cliBuf);
+
 	if (pStackInfo->bProfileNotified)
 	{
 	pBtCoexist->fBtcDispDbgMsg(pBtCoexist, BTC_DBG_DISP_BT_LINK_INFO);
@@ -3808,6 +3811,13 @@ EXhalbtc8723b1ant_BtInfoNotify(
 			halbtc8723b1ant_BtAutoReport(pBtCoexist, FORCE_EXEC, TRUE);
 		}
 #endif
+	}
+
+	// host stack says a HID device is connected: treat the link as HID-only (PAN/FTP bit -> HID)
+	if(GLBtHostHidHint && (btInfo & BT_INFO_8723B_1ANT_B_CONNECTION))
+	{
+		btInfo &= ~BT_INFO_8723B_1ANT_B_FTP;
+		btInfo |= BT_INFO_8723B_1ANT_B_HID;
 	}
 
 	// check BIT2 first ==> check if bt is under inquiry or page scan

@@ -55,6 +55,8 @@ void hal_btcoex_MediaStatusNotify(PADAPTER padapter, u8 mediaStatus);
 void hal_btcoex_SpecialPacketNotify(PADAPTER padapter, u8 pktType);
 void hal_btcoex_IQKNotify(PADAPTER padapter, u8 state);
 void hal_btcoex_BtInfoNotify(PADAPTER padapter, u8 length, u8 *tmpBuf);
+u8 hal_btcoex_GetHostHidHint(void);
+void hal_btcoex_SetHostHidHint(PADAPTER padapter, u8 hint);
 void hal_btcoex_SuspendNotify(PADAPTER padapter, u8 state);
 void hal_btcoex_HaltNotify(PADAPTER padapter);
 void hal_btcoex_SwitchBtTRxMask(PADAPTER padapter);

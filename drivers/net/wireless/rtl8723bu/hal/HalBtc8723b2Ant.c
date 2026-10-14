@@ -4130,6 +4130,13 @@ EXhalbtc8723b2ant_BtInfoNotify(
 #endif
 	}
 
+	// host stack says a HID device is connected: treat the link as HID-only (PAN/FTP bit -> HID)
+	if(GLBtHostHidHint && (btInfo & BT_INFO_8723B_2ANT_B_CONNECTION))
+	{
+		btInfo &= ~BT_INFO_8723B_2ANT_B_FTP;
+		btInfo |= BT_INFO_8723B_2ANT_B_HID;
+	}
+
 	// check BIT2 first ==> check if bt is under inquiry or page scan
 	if(btInfo & BT_INFO_8723B_2ANT_B_INQ_PAGE)
 		pCoexSta->bC2hBtInquiryPage = TRUE;

@@ -78,6 +78,11 @@ static const char *const ioStaString[] =
 };
 
 BTC_COEXIST GLBtCoexist;
+/* host stack says a HID device is connected (proc bt_host_hid), reset on module load only */
+u8 GLBtHostHidHint = 0;
+/* last BT-FW info report (as seen by BtInfoNotify), replayed when the hint changes */
+static u8 GLBtcLastBtInfo[10];
+static u8 GLBtcLastBtInfoLen = 0;
 static u8 GLBtcWiFiInScanState;
 static u8 GLBtcWiFiInIQKState;
 
@@ -1814,7 +1819,37 @@ void hal_btcoex_BtInfoNotify(PADAPTER padapter, u8 length, u8 *tmpBuf)
 	if (GLBtcWiFiInIQKState == _TRUE)
 		return;
 
+	/* remember BT-FW reports (not the wifi-FW fetch reply, src 0) */
+	if (length >= 2 && length <= sizeof(GLBtcLastBtInfo) && (tmpBuf[0] & 0xf) != 0) {
+		_rtw_memcpy(GLBtcLastBtInfo, tmpBuf, length);
+		GLBtcLastBtInfoLen = length;
+	}
+
 	EXhalbtcoutsrc_BtInfoNotify(&GLBtCoexist, tmpBuf, length);
+}
+
+u8 hal_btcoex_GetHostHidHint(void)
+{
+	return GLBtHostHidHint;
+}
+
+void hal_btcoex_SetHostHidHint(PADAPTER padapter, u8 hint)
+{
+	u8 buf[12];
+	u8 len = GLBtcLastBtInfoLen;
+
+	GLBtHostHidHint = hint ? 1 : 0;
+
+	if (len < 2 || len > sizeof(GLBtcLastBtInfo))
+		return;
+
+	/* replay the last report through the cmd thread (same format rtw_btinfo_hdl expects):
+	 * cid 0x27, payload len, then the report without its source byte */
+	_rtw_memset(buf, 0, sizeof(buf));
+	buf[0] = 0x27;
+	buf[1] = len - 1;
+	_rtw_memcpy(&buf[2], &GLBtcLastBtInfo[1], len - 1);
+	rtw_btinfo_cmd(padapter, buf, len + 1);
 }
 
 void hal_btcoex_SuspendNotify(PADAPTER padapter, u8 state)

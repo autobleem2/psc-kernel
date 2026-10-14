@@ -606,6 +606,7 @@ typedef struct _BTC_COEXIST{
 } BTC_COEXIST, *PBTC_COEXIST;
 
 extern BTC_COEXIST				GLBtCoexist;
+extern u8						GLBtHostHidHint;
 
 BOOLEAN
 EXhalbtcoutsrc_InitlizeVariables(

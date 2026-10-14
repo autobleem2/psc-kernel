@@ -129,6 +129,16 @@ void rtw_btcoex_BtInfoNotify(PADAPTER padapter, u8 length, u8 *tmpBuf)
 	hal_btcoex_BtInfoNotify(padapter, length, tmpBuf);
 }
 
+u8 rtw_btcoex_GetHostHidHint(void)
+{
+	return hal_btcoex_GetHostHidHint();
+}
+
+void rtw_btcoex_SetHostHidHint(PADAPTER padapter, u8 hint)
+{
+	hal_btcoex_SetHostHidHint(padapter, hint);
+}
+
 void rtw_btcoex_SuspendNotify(PADAPTER padapter, u8 state)
 {
 	hal_btcoex_SuspendNotify(padapter, state);

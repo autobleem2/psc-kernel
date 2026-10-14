@@ -447,6 +447,34 @@ static ssize_t proc_set_btinfo_evt(struct file *file, const char __user *buffer,
 
 	return count;
 }
+
+static int proc_get_bt_host_hid(struct seq_file *m, void *v)
+{
+	DBG_871X_SEL_NL(m, "%u\n", rtw_btcoex_GetHostHidHint());
+
+	return 0;
+}
+
+static ssize_t proc_set_bt_host_hid(struct file *file, const char __user *buffer, size_t count, loff_t *pos, void *data)
+{
+	struct net_device *dev = data;
+	_adapter *padapter = (_adapter *)rtw_netdev_priv(dev);
+	char tmp[8];
+
+	if (count < 1)
+		return -EFAULT;
+
+	if (buffer && !copy_from_user(tmp, buffer, sizeof(tmp) < count ? sizeof(tmp) : count)) {
+		if (tmp[0] == '0')
+			rtw_btcoex_SetHostHidHint(padapter, 0);
+		else if (tmp[0] == '1')
+			rtw_btcoex_SetHostHidHint(padapter, 1);
+		else
+			return -EINVAL;
+	}
+
+	return count;
+}
 #endif
 
 /*
@@ -513,6 +541,7 @@ static const struct rtw_proc_hdl adapter_proc_hdls [] = {
 	{"btcoex_dbg", proc_get_btcoex_dbg, proc_set_btcoex_dbg},
 	{"btcoex", proc_get_btcoex_info, NULL},
 	{"btinfo_evt", proc_get_dummy, proc_set_btinfo_evt},
+	{"bt_host_hid", proc_get_bt_host_hid, proc_set_bt_host_hid},
 #endif /* CONFIG_BT_COEXIST */
 
 #if defined(DBG_CONFIG_ERROR_DETECT)
