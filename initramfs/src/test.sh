@@ -32,8 +32,13 @@ tree() {
 	: >"$r/dev/mmcblk0p7"
 	: >"$r/dev/mmcblk0p10"
 	: >"$r/dev/loop-control"
-	printf '#!/bin/sh\n' >"$r/fake/mmcblk0p7.ext4/sbin/init"
-	chmod 755 "$r/fake/mmcblk0p7.ext4/sbin/init"
+	# as on the console: /sbin/init is an ABSOLUTE symlink (stock: -> /lib/systemd/systemd). It must be
+	# resolved inside the new root, not in the initramfs - a plain access() bricked a console (2026-10-14).
+	# The target name does not exist on a build host, so a check that follows it from / fails here too.
+	mkdir -p "$r/fake/mmcblk0p7.ext4/lib/abinit-test"
+	printf '#!/bin/sh\n' >"$r/fake/mmcblk0p7.ext4/lib/abinit-test/systemd"
+	chmod 755 "$r/fake/mmcblk0p7.ext4/lib/abinit-test/systemd"
+	ln -s /lib/abinit-test/systemd "$r/fake/mmcblk0p7.ext4/sbin/init"
 }
 
 # stick <case> <node> <fstype> <image>: a stick with a good image
@@ -99,7 +104,7 @@ stick $c sda1 vfat img1
 run $c
 check $c stick "sha256 ok" "mounted /dev/sda1 on /stick (vfat, ro)" "unmounted /stick" \
 	"lowerdir=/squashfs:/newroot,upperdir=/abrw/upper,workdir=/abrw/work" \
-	"mounted /dev/mmcblk0p10 on /root/data (ext4, ro, noload)" "rear port left alone" "!swmode"
+	"mounted /dev/mmcblk0p10 on /root/data (ext4)" "rear port left alone" "!swmode"
 [ -s "$BASE/$c/sys/devices/platform/mt_usb/swmode" ] && { FAIL=$((FAIL + 1)); echo "FAIL $c: swmode written"; }
 
 c=bad_sha
@@ -178,8 +183,9 @@ c=otg
 tree $c "ab.wait=3" 3
 stick $c sda1 vfat img1
 run $c
-check $c stick "charger_info 3: rear port to host mode"
-if [ "$(cat "$BASE/$c/sys/devices/platform/mt_usb/swmode")" != "$(printf 'idle\nhost')" ]; then
+check $c stick "charger_info 3: rear port to host mode" "rear port back to idle for the first suspend"
+# host for the search, idle again before the switch: the first suspend fails on an active host port
+if [ "$(cat "$BASE/$c/sys/devices/platform/mt_usb/swmode")" != "$(printf 'idle\nhost\nidle')" ]; then
 	FAIL=$((FAIL + 1))
 	echo "FAIL $c: swmode got '$(cat "$BASE/$c/sys/devices/platform/mt_usb/swmode")'"
 fi

@@ -582,6 +582,81 @@ static void delete_contents(int dirfd, dev_t rootdev, int depth)
 static const char *const moved[] = { "/dev", "/proc", "/sys" };
 
 /*
+ * Is <newroot><rel> an executable once newroot is /? Symlinks are followed inside newroot: an absolute target
+ * starts again at newroot, not at the initramfs (the stock /sbin/init is a symlink to /lib/systemd/systemd, which
+ * access() would look for in the initramfs and not find). Every component is resolved, so a symlinked directory
+ * on the way works too. Up to 40 links, as the kernel allows.
+ */
+static int executable_in_root(const char *newroot, const char *rel)
+{
+	char cur[PATH_MAX];	/* the resolved part, relative to newroot, starts with / or is empty */
+	char rest[PATH_MAX];	/* what is left to resolve */
+	char full[PATH_MAX];
+	int links = 0;
+
+	cur[0] = '\0';
+	snprintf(rest, sizeof(rest), "%s", rel);
+	while (rest[0]) {
+		char comp[NAME_MAX + 1];
+		char target[PATH_MAX];
+		char *p = rest, *slash;
+		size_t n;
+		struct stat st;
+		ssize_t len;
+
+		while (*p == '/')
+			p++;
+		if (!*p)
+			break;
+		slash = strchr(p, '/');
+		n = slash ? (size_t)(slash - p) : strlen(p);
+		if (n > NAME_MAX)
+			return -1;
+		memcpy(comp, p, n);
+		comp[n] = '\0';
+		memmove(rest, p + n, strlen(p + n) + 1);
+		if (!strcmp(comp, "."))
+			continue;
+		if (!strcmp(comp, "..")) {
+			char *last = strrchr(cur, '/');
+
+			if (last)
+				*last = '\0';
+			continue;
+		}
+		if (strlen(cur) + 1 + n >= sizeof(cur))
+			return -1;
+		strcat(cur, "/");
+		strcat(cur, comp);
+		snprintf(full, sizeof(full), "%s%s", newroot, cur);
+		if (lstat(P(full), &st) < 0)
+			return -1;
+		if (!S_ISLNK(st.st_mode))
+			continue;
+		if (++links > 40)
+			return -1;
+		len = readlink(P(full), target, sizeof(target) - 1);
+		if (len < 0)
+			return -1;
+		target[len] = '\0';
+		/* drop the link itself; an absolute target restarts at newroot */
+		*strrchr(cur, '/') = '\0';
+		if (target[0] == '/')
+			cur[0] = '\0';
+		if (strlen(target) + 1 + strlen(rest) >= sizeof(rest))
+			return -1;
+		{
+			char tmp[PATH_MAX];
+
+			snprintf(tmp, sizeof(tmp), "%s/%s", target, rest);
+			snprintf(rest, sizeof(rest), "%s", tmp);
+		}
+	}
+	snprintf(full, sizeof(full), "%s%s", newroot, cur);
+	return access(P(full), X_OK);
+}
+
+/*
  * Move /dev, /proc, /sys into newroot, make it / and exec its /sbin/init.
  * Returns -1 when nothing is changed (the caller can try another path),
  * -2 when the root was already switched and init could not be started.
@@ -592,7 +667,7 @@ static int switch_root(const char *newroot, const char *label)
 	int i;
 
 	snprintf(path, sizeof(path), "%s/sbin/init", newroot);
-	if (access(P(path), X_OK) < 0) {
+	if (executable_in_root(newroot, "/sbin/init") < 0) {
 		logmsg("%s: %s", path, strerror(errno));
 		return -1;
 	}
@@ -713,6 +788,8 @@ static int stick_wait_seconds(void)
 	return wait;
 }
 
+static int rear_host; /* rear_port() switched the rear port to host mode */
+
 /* the rear port is in host mode only when an OTG adapter is plugged (as start_pman does) */
 static void rear_port(void)
 {
@@ -734,7 +811,20 @@ static void rear_port(void)
 	if (write_str(REAR_SWMODE, "idle\n") < 0)
 		return;
 	sleep_ms(200);
-	write_str(REAR_SWMODE, "host\n");
+	if (write_str(REAR_SWMODE, "host\n") == 0)
+		rear_host = 1;
+}
+
+/* Back to idle once the stick search is over: the console's first suspend (start_pman, before it puts the port in
+ * host mode itself) fails while the rear port is an active host - "usb1 failed to suspend async: error -16" - and
+ * the console then starts at once instead of sleeping (2026-10-14). */
+static void rear_port_idle(void)
+{
+	if (!rear_host)
+		return;
+	if (write_str(REAR_SWMODE, "idle\n") == 0)
+		logmsg("rear port back to idle for the first suspend");
+	rear_host = 0;
 }
 
 /* sd[a-z] or sd[a-z]<n> */
@@ -1036,12 +1126,15 @@ static int find_stick(int wait_s)
 	return -1;
 }
 
-/* stick: squashfs in RAM over the stock root, upper in RAM, /data read-only */
+/* stick: squashfs in RAM over the stock root, upper in RAM, /data read-write */
 static int boot_stick(int wait_s)
 {
-	int base = mdepth, ret;
+	int base = mdepth, ret, found;
 
-	if (find_stick(wait_s) < 0)
+	/* the image is in RAM and the stick unmounted once it is found: the rear port is not needed any more */
+	found = find_stick(wait_s);
+	rear_port_idle();
+	if (found < 0)
 		return -1;
 	if (mount_squashfs(RAM_IMAGE, MNT_SQUASHFS) < 0)
 		goto fail;
@@ -1052,10 +1145,11 @@ static int boot_stick(int wait_s)
 	if (push_mount("overlay", MNT_ROOT, "overlay", 0,
 		       "lowerdir=" MNT_SQUASHFS ":" MNT_NEWROOT ",upperdir=" MNT_RW "/upper,workdir=" MNT_RW "/work") < 0)
 		goto fail;
-	/* never written: read-only, and noload so not even a journal replay touches it */
+	/* read-write with its journal, as the stock boot has it: Sony's own services and saves write there. The stick's
+	 * boot.sh makes it read-only only while the AutoBleem launcher runs (a remount of a noload mount would write
+	 * without the journal). */
 	if (wait_for_node(DEV_DATA, DATA_WAIT_MS) < 0 ||
-	    push_mount(DEV_DATA, MNT_ROOT MNT_DATA, "ext4",
-		       MS_RDONLY | MS_NOSUID | MS_NODEV | MS_NOATIME, "noload") < 0)
+	    push_mount(DEV_DATA, MNT_ROOT MNT_DATA, "ext4", MS_NOSUID | MS_NODEV | MS_NOATIME, NULL) < 0)
 		logmsg("continuing without %s", MNT_DATA);
 	ret = switch_root(MNT_ROOT, "stick");
 	if (ret == -2)
@@ -1137,6 +1231,7 @@ int main(int argc, char **argv)
 		logmsg("ab.wait=0: not looking for a stick");
 	else if (boot_stick(wait_s) == -2)
 		goto last_resort;
+	rear_port_idle();
 
 	if (legacy_present() && boot_legacy() == -2)
 		goto last_resort;
